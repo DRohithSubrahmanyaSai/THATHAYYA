@@ -1,0 +1,16 @@
+.env
+*.wav
+*.mp3
+__pycache__/
+*.pyc
+.venv/
+.venv-asr/
+.venv-vc/
+.cache/
+third_party/
+data/recordings/
+data/refs/
+runtime/out/
+tests/out/
+*.log
+.DS_Store

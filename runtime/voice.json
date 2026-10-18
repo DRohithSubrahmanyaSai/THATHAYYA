@@ -1,0 +1,23 @@
+{
+  "voice_name": "Thathayya",
+  "canonical_output": "output_local.wav",
+  "sample_rate": 24000,
+  "engines": {
+    "draft": "indicf5_local",
+    "live": "cartesia"
+  },
+  "indicf5_local": {
+    "model": "ai4bharat/IndicF5",
+    "ref_audio": "data/recordings/Thathayya.MP3",
+    "ref_text_file": "data/ref_transcript.txt",
+    "cfg": 2.0,
+    "nfe": 32,
+    "speed": 1.0,
+    "remove_sil": true,
+    "target_dbfs": -20.0
+  },
+  "cartesia": {
+    "model": "sonic-3.6",
+    "sample_rate": 44100
+  }
+}
