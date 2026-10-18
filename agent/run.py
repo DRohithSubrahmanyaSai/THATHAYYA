@@ -34,14 +34,16 @@ def main():
     print(f"Loading STT ({config.STT_ENGINE})...")
     stt = STT()
     print("Loading VAD (Silero)...")
-    vad = SileroVad()
+    vad = SileroVad(threshold=config.VAD_THRESHOLD)
     log = CallLog()
     print(f"learned memories: {brain.memory.count()}  |  log: {log.path.name}")
     print("\nReady. Speak into your mic. Ctrl+C to quit.\n")
 
     while True:
         try:
-            audio, sr = mic.listen_until_silence(vad)
+            audio, sr = mic.listen_until_silence(
+                vad, max_silence_ms=config.MAX_SILENCE_MS, prefix_s=config.LISTEN_PREFIX_S
+            )
         except KeyboardInterrupt:
             break
         if audio is None or len(audio) < sr // 2:
@@ -49,14 +51,24 @@ def main():
 
         t0 = time.time()
         try:
-            text = stt.transcribe(audio, sr)
+            text, conf = stt.transcribe_with_meta(audio, sr)
         except Exception as e:
             print(f"STT error: {e}")
             continue
         if not text.strip():
             continue
-        print(f"you       : {text}")
-        log.write("user", text)
+        shown = f"{conf:.2f}" if conf is not None else "n/a"
+        print(f"you       : {text}   (conf={shown})")
+        log.write("user", text, confidence=conf)
+
+        if conf is not None and conf < config.STT_CONFIDENCE_MIN:
+            try:
+                wav, out_sr = tts.synthesize(config.LOW_CONFIDENCE_REPLY)
+                if not args.mute:
+                    mic.play(wav, out_sr)
+            except Exception:
+                pass
+            continue
 
         t1 = time.time()
         try:

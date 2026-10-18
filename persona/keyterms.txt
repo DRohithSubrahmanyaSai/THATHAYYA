@@ -1,0 +1,14 @@
+# Keyterms — names, places, and words Deepgram should recognize
+#
+# One term per line. Multi-word phrases are fine. Blank lines and lines
+# starting with '#' are ignored. Up to 100 terms total (after merging
+# with names learned during calls). Telugu script or roman both work.
+
+# --- family names ---
+నాగమణి
+
+# --- places ---
+నర్సాపురం
+గోదావరి
+
+# --- add more below ---

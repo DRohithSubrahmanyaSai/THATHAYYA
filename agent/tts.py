@@ -77,7 +77,7 @@ class CartesiaTTS:
         self.headers = {
             "Content-Type": "application/json",
             "X-API-Key": config.CARTESIA_API_KEY,
-            "Cartesia-Version": "2026-08-14",
+            "Cartesia-Version": config.CARTESIA_VERSION,
         }
 
     def synthesize(self, text: str, speed: float = 1.0):
