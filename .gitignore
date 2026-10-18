@@ -11,6 +11,7 @@ third_party/
 data/recordings/
 data/refs/
 runtime/out/
+runtime/logs/
 tests/out/
 *.log
 .DS_Store

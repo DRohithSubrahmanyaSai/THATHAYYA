@@ -7,6 +7,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from agent import config
 from agent.brain import Brain
+from agent.memory import CallLog
 
 
 def main():
@@ -15,7 +16,9 @@ def main():
     except RuntimeError as e:
         print(f"ERROR: {e}")
         return
-    print("Thathayya — text chat (type 'q' to quit, 'reset' to clear history)")
+    log = CallLog()
+    print(f"Thathayya — text chat (type 'q' to quit, 'reset' to clear history, '/remember <fact>' to teach)")
+    print(f"learned memories: {brain.memory.count()}  |  log: {log.path.name}")
     while True:
         try:
             q = input("> ")
@@ -23,14 +26,27 @@ def main():
             break
         if not q.strip():
             continue
-        if q.strip().lower() in {"q", "exit", "quit"}:
+        low = q.strip().lower()
+        if low in {"q", "exit", "quit"}:
             break
-        if q.strip().lower() == "reset":
+        if low == "reset":
             brain.reset()
             print("(history cleared)")
             continue
+        if low.startswith("/remember"):
+            fact = q.strip()[len("/remember"):].strip()
+            if not fact:
+                print("usage: /remember <fact>")
+                continue
+            saved = brain.remember(fact)
+            log.write("learn", fact)
+            print(f"(remembered: {saved})")
+            continue
+        log.write("user", q)
         try:
-            print(brain.chat(q))
+            reply = brain.chat(q)
+            log.write("assistant", reply)
+            print(reply)
         except Exception as e:
             print(f"ERROR: {e}")
             continue

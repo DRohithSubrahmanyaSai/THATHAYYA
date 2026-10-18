@@ -3,6 +3,7 @@ import argparse
 
 from . import config, mic
 from .brain import Brain
+from .memory import CallLog
 from .stt import STT
 from .tts import TTS
 from .vad import SileroVad
@@ -34,6 +35,8 @@ def main():
     stt = STT()
     print("Loading VAD (Silero)...")
     vad = SileroVad()
+    log = CallLog()
+    print(f"learned memories: {brain.memory.count()}  |  log: {log.path.name}")
     print("\nReady. Speak into your mic. Ctrl+C to quit.\n")
 
     while True:
@@ -53,6 +56,7 @@ def main():
         if not text.strip():
             continue
         print(f"you       : {text}")
+        log.write("user", text)
 
         t1 = time.time()
         try:
@@ -71,6 +75,13 @@ def main():
             print(f"TTS error: {e}")
 
         print(f"[latency] stt={t1 - t0:.2f}s  llm={t2 - t1:.2f}s  total={time.time() - t0:.2f}s\n")
+        log.write(
+            "assistant",
+            reply,
+            stt=round(t1 - t0, 2),
+            llm=round(t2 - t1, 2),
+            total=round(time.time() - t0, 2),
+        )
 
     print("bye")
 
