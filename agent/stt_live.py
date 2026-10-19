@@ -30,6 +30,7 @@ class DeepgramLiveSTT:
         self.events: "asyncio.Queue[dict]" = asyncio.Queue()
         self._ws = None
         self._recv_task = None
+        self._keepalive_task = None
 
     def _url(self) -> str:
         params = [
@@ -58,6 +59,12 @@ class DeepgramLiveSTT:
             ping_timeout=20,
         )
         self._recv_task = asyncio.create_task(self._recv_loop())
+        self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+
+    async def _keepalive_loop(self) -> None:
+        while True:
+            await asyncio.sleep(config.DG_KEEPALIVE_S)
+            await self.keepalive()
 
     async def _recv_loop(self) -> None:
         try:
@@ -114,3 +121,5 @@ class DeepgramLiveSTT:
                 pass
         if self._recv_task is not None:
             self._recv_task.cancel()
+        if self._keepalive_task is not None:
+            self._keepalive_task.cancel()

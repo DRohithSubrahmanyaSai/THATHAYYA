@@ -52,13 +52,22 @@ class RealtimeAgent:
         self._evt_task = asyncio.create_task(self._event_loop())
 
     async def _mic_loop(self) -> None:
+        need = max(1, int(config.BARGE_IN_MIN_S * 1000 / 32))
+        loud = 0
         while True:
             block = await self.mic.read_async()
             if not block:
                 continue
-            if config.BARGE_IN and self.player.is_playing() and self.state == "speaking":
+            if config.BARGE_IN and self.state == "speaking":
                 if rms_int16(block) > config.BARGE_IN_RMS:
-                    self._barge_in()
+                    loud += 1
+                    if loud >= need:
+                        self._barge_in()
+                        loud = 0
+                else:
+                    loud = 0
+            else:
+                loud = 0
             await self.stt.send_audio(block)
 
     def _barge_in(self) -> None:

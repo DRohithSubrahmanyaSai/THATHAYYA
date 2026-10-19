@@ -4,6 +4,17 @@
 # starting with '#' are ignored. Up to 100 terms total (after merging
 # with names learned during calls). Telugu script or roman both work.
 
+# --- family words the STT tends to mishear ---
+తాతయ్య
+అమ్మమ్మ
+నానమ్మ
+మనవడు
+మనవరాలు
+కూతురు
+అబ్బాయి
+భార్య
+ఆవిడ
+
 # --- family names ---
 నాగమణి
 

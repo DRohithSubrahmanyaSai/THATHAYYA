@@ -19,14 +19,23 @@ def build_system_prompt(persona: dict, learned: str = "") -> str:
     parts.append(
         "# Rules\n"
         "- Reply ONLY as Thathayya, in spoken Telugu (West Godavari dialect).\n"
-        "- Keep replies to 1-2 short sentences. This is a voice call.\n"
+        "- Keep replies to 1-2 short sentences. This is a voice call. Be brief.\n"
         "- Never break character. Never mention being an AI or a model.\n"
-        "- Ask questions back. Be warm and plain.\n"
-        "- NEVER invent names, places, people, dates, or events. Only state what is in your memories.\n"
-        "- If you don't know a name, place, or fact that is not listed, say you don't remember in his voice. Never guess.\n"
+        "- NEVER invent names, places, people, dates, activities, or events. Everything you say must be a general feeling or come from your memories.\n"
+        "- You have NO stored facts about your family, village, or daily life unless listed above. Do not make any up.\n"
+        "- If asked about a specific name, place, or fact not listed, say you don't remember in his voice. Never guess.\n"
+        "- Do NOT describe specific things you did today (fields, books, chores) unless it is in your memories.\n"
+        "- Ask at most one short question back, and vary it. Do not repeat the same question every turn.\n"
+        "- Match what the grandson actually said; never change the topic on your own.\n"
         "- Output ONLY the spoken line. No quotes, no stage directions, no English translation."
     )
     return "\n\n".join(parts)
+
+
+def _reasoning_kwargs(model: str) -> dict:
+    if config.GROQ_REASONING_EFFORT and "gpt-oss" in model:
+        return {"reasoning_effort": config.GROQ_REASONING_EFFORT}
+    return {}
 
 
 class Brain:
@@ -68,8 +77,9 @@ class Brain:
         resp = self.client.chat.completions.create(
             model=self.model,
             messages=self._messages(user_text),
-            temperature=0.8,
-            max_tokens=800,
+            temperature=config.GROQ_TEMPERATURE,
+            max_tokens=config.GROQ_MAX_TOKENS,
+            **_reasoning_kwargs(self.model),
         )
         reply = (resp.choices[0].message.content or "").strip()
         self._remember(user_text, reply)
@@ -80,9 +90,10 @@ class Brain:
         stream = self.client.chat.completions.create(
             model=self.model,
             messages=self._messages(user_text),
-            temperature=0.8,
-            max_tokens=800,
+            temperature=config.GROQ_TEMPERATURE,
+            max_tokens=config.GROQ_MAX_TOKENS,
             stream=True,
+            **_reasoning_kwargs(self.model),
         )
         chunks = []
         for chunk in stream:
