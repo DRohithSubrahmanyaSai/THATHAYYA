@@ -89,6 +89,9 @@ class CartesiaTTSStream:
                 if data.get("context_id") == context_id:
                     return
             elif kind == "error":
+                msg = str(data.get("message") or "")
+                if data.get("done") or "cancelled" in msg.lower() or "does not exist" in msg.lower():
+                    return
                 raise RuntimeError(f"Cartesia WS error: {data}")
             elif kind == "closed":
                 return

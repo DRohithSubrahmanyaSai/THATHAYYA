@@ -1,4 +1,4 @@
-from groq import Groq
+from groq import APIError, Groq
 
 from . import config
 from .memory import Memory, find_trigger
@@ -74,34 +74,72 @@ class Brain:
 
     def chat(self, user_text: str) -> str:
         self._maybe_learn(user_text)
-        resp = self.client.chat.completions.create(
+        msgs = self._messages(user_text)
+        kwargs = dict(
             model=self.model,
-            messages=self._messages(user_text),
+            messages=msgs,
             temperature=config.GROQ_TEMPERATURE,
             max_tokens=config.GROQ_MAX_TOKENS,
+            timeout=config.GROQ_TIMEOUT_S,
             **_reasoning_kwargs(self.model),
         )
-        reply = (resp.choices[0].message.content or "").strip()
+        reply = ""
+        try:
+            resp = self.client.chat.completions.create(**kwargs)
+            reply = (resp.choices[0].message.content or "").strip()
+        except APIError as e:
+            print(f"[llm {type(e).__name__}: {str(e)[:120]} -> retrying {config.GROQ_FALLBACK_MODEL}")
+            fb = self.client.chat.completions.create(
+                model=config.GROQ_FALLBACK_MODEL,
+                messages=msgs,
+                temperature=config.GROQ_TEMPERATURE,
+                max_tokens=min(config.GROQ_MAX_TOKENS, 120),
+                timeout=config.GROQ_TIMEOUT_S,
+                **_reasoning_kwargs(config.GROQ_FALLBACK_MODEL),
+            )
+            reply = (fb.choices[0].message.content or "").strip()
         self._remember(user_text, reply)
         return reply
 
     def stream(self, user_text: str):
         self._maybe_learn(user_text)
-        stream = self.client.chat.completions.create(
+        msgs = self._messages(user_text)
+        kwargs = dict(
             model=self.model,
-            messages=self._messages(user_text),
+            messages=msgs,
             temperature=config.GROQ_TEMPERATURE,
             max_tokens=config.GROQ_MAX_TOKENS,
             stream=True,
+            timeout=config.GROQ_TIMEOUT_S,
             **_reasoning_kwargs(self.model),
         )
         chunks = []
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content or ""
-            if delta:
-                chunks.append(delta)
-                yield delta
-        self._remember(user_text, "".join(chunks).strip())
+        try:
+            stream = self.client.chat.completions.create(**kwargs)
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    chunks.append(delta)
+                    yield delta
+            self._remember(user_text, "".join(chunks).strip())
+            return
+        except APIError as e:
+            print(f"[llm {type(e).__name__}: {str(e)[:120]} -> retrying {config.GROQ_FALLBACK_MODEL}")
+            fb = self.client.chat.completions.create(
+                model=config.GROQ_FALLBACK_MODEL,
+                messages=msgs,
+                temperature=config.GROQ_TEMPERATURE,
+                max_tokens=min(config.GROQ_MAX_TOKENS, 120),
+                stream=True,
+                timeout=config.GROQ_TIMEOUT_S,
+                **_reasoning_kwargs(config.GROQ_FALLBACK_MODEL),
+            )
+            for chunk in fb:
+                delta = chunk.choices[0].delta.content or ""
+                if delta:
+                    chunks.append(delta)
+                    yield delta
+            self._remember(user_text, "".join(chunks).strip())
 
     def reset(self) -> None:
         self.history.clear()
