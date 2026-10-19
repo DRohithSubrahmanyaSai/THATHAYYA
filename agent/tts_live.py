@@ -63,6 +63,9 @@ class CartesiaTTSStream:
             "context_id": context_id,
             "continue": continue_,
             "add_timestamps": False,
+            "speed": config.CARTESIA_SPEED,
+            "scale": config.CARTESIA_SCALE,
+            "temperature": config.CARTESIA_TEMPERATURE,
         }
         await self._ws.send(json.dumps(payload))
 

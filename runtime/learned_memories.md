@@ -2,4 +2,6 @@
 
 > Facts taught to Thathayya during conversations. Auto-managed; safe to edit by hand.
 
-- my name is Rohith and I am his grandson
+- నా పేరు సాయి సాఇ
+- I am his grandson
+- జూనియర్

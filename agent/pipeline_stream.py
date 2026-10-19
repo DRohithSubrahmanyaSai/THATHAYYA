@@ -8,7 +8,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from . import config
 from .audio_input import MicSource, rms_int16
-from .brain import Brain
+from .brain import Brain, build_system_prompt
+from .learn import LiveLearner
 from .memory import CallLog
 from .player import StreamPlayer
 from .sentences import SentenceStream
@@ -34,6 +35,7 @@ class RealtimeAgent:
         self.tts = CartesiaTTSStream()
         self.mic = MicSource()
         self.log = CallLog()
+        self.learner = LiveLearner(self.brain.memory, self.brain.client, model=config.GROQ_LEARN_MODEL)
         self.state = "listening"
         self._final_buf: list[str] = []
         self._conf: list[float] = []
@@ -114,7 +116,7 @@ class RealtimeAgent:
         if conf is not None and conf < config.STT_CONFIDENCE_MIN:
             await self._speak_line(config.LOW_CONFIDENCE_REPLY)
             return
-        await self._respond(text)
+        await self._respond(text, conf)
 
     async def _speak_line(self, text: str) -> None:
         self.state = "speaking"
@@ -135,7 +137,11 @@ class RealtimeAgent:
             self.state = "listening"
             self._ignore_until = time.time() + 0.3
 
-    async def _respond(self, text: str) -> None:
+    async def _respond(self, text: str, conf: float | None = None) -> None:
+        # Hybrid live-learning: capture any durable fact the user just stated.
+        if self.learner.maybe_learn(text, conf):
+            self.brain.system = build_system_prompt(self.brain.persona, learned=self.brain.memory.as_prompt())
+
         self.state = "speaking"
         self._barge.clear()
         self._ignore_until = 0.0
@@ -157,11 +163,15 @@ class RealtimeAgent:
                         return
                     parts.append(delta)
                     for sentence in splitter.push(delta):
-                        await self.tts.send_text(self._ctx, sentence, continue_=True)
+                        line = LiveLearner.sanitize(sentence)
+                        if line:
+                            await self.tts.send_text(self._ctx, line, continue_=True)
                 for sentence in splitter.flush():
                     if self._barge.is_set():
                         return
-                    await self.tts.send_text(self._ctx, sentence, continue_=True)
+                    line = LiveLearner.sanitize(sentence)
+                    if line:
+                        await self.tts.send_text(self._ctx, line, continue_=True)
                 await self.tts.send_text(self._ctx, "", continue_=False)
             except Exception as e:  # noqa: BLE001
                 print(f"[llm/tts send error] {e}")
