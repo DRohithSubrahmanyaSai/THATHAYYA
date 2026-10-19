@@ -14,6 +14,8 @@ def build_system_prompt(persona: dict, learned: str = "") -> str:
         parts.append("# His real phrases (mimic this voice)\n" + persona["phrases"])
     if persona.get("memories"):
         parts.append("# Memories you may recall naturally\n" + persona["memories"])
+    if config.DATASET_PROMPT:
+        parts.append(config.DATASET_PROMPT)
     if learned:
         parts.append("# Things your grandson taught you (trust these)\n" + learned)
     parts.append(

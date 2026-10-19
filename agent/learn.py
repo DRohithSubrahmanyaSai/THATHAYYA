@@ -39,21 +39,22 @@ class LiveLearner:
         self.model = model or config.GROQ_LEARN_MODEL
 
     def maybe_learn(self, user_text: str, conf: float | None = None) -> bool:
-        """Learn from a user turn. Returns True if a fact was stored."""
+        """Note a fact into the pending file for the user to review.
+
+        Notes everything (no confidence gate) so the user can verify.
+        Returns True if a fact was noted.
+        """
         user_text = user_text.strip()
         if not user_text:
             return False
 
-        # Explicit trigger -> always learn (cheap, no LLM).
+        # Explicit trigger -> note the exact line.
         if find_trigger(user_text):
-            self.memory.add(user_text)
+            self.memory.add_pending(user_text)
             return True
 
         # Implicit capture: only when the turn plausibly states a fact.
         if not _looks_like_fact(user_text):
-            return False
-
-        if conf is not None and conf < config.LEARN_MIN_CONF:
             return False
 
         try:
@@ -64,7 +65,7 @@ class LiveLearner:
 
         if not fact:
             return False
-        self.memory.add(fact)
+        self.memory.add_pending(fact)
         return True
 
     def _extract_fact(self, user_text: str) -> str | None:

@@ -2,6 +2,6 @@
 
 > Facts taught to Thathayya during conversations. Auto-managed; safe to edit by hand.
 
-- నా పేరు సాయి సాఇ
 - I am his grandson
-- జూనియర్
+- His village name is జిన్నూరు
+- He lives in సరిపల్లి

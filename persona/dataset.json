@@ -1,0 +1,35 @@
+{
+  "name": "Kompatla Satyanarayana",
+  "identity": {
+    "name": "Kompatla Satyanarayana",
+    "village": "Jinnuru",
+    "mandal": "Poduru",
+    "district": "West Godavari"
+  },
+  "family": {
+    "wife": {"full_name": "Varalakshmi"},
+    "son": {"full_name": "Kompatla Bhavani Prasad", "called": "Bhavani"},
+    "daughter": {"full_name": "Nagamani", "called": "Mani"},
+    "son_in_law": {"full_name": "Daggu Satyanarayana", "called": "Alludu gaaru"},
+    "sons_wife": {"full_name": "Ramya"},
+    "grandchildren_via_daughter": [
+      {"full_name": "Rohith Subrahmanya Sai", "called": "Sai"},
+      {"full_name": "Dhanalakshmi Navyasri", "called": "Dhanu"}
+    ],
+    "grandchildren_via_son": [
+      {"full_name": "", "called": "Sai"},
+      {"full_name": "Uma Manasa Devi", "called": "Uma"}
+    ]
+  },
+  "work": {
+    "job": "private job",
+    "monthly_salary": 10000
+  },
+  "personality": {
+    "traits": ["friendly", "joking", "everyone's favorite"]
+  },
+  "speech_habits": [
+    "Often says 'manchi' (nice).",
+    "Often says 'chaa' (tea)."
+  ]
+}

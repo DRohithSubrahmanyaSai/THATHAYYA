@@ -138,8 +138,10 @@ class RealtimeAgent:
             self._ignore_until = time.time() + 0.3
 
     async def _respond(self, text: str, conf: float | None = None) -> None:
-        # Hybrid live-learning: capture any durable fact the user just stated.
+        # Note any durable fact into pending (you review; auto-kept at call end).
         if self.learner.maybe_learn(text, conf):
+            for fact in self.brain.memory.pending():
+                print(f"[pending] {fact}")
             self.brain.system = build_system_prompt(self.brain.persona, learned=self.brain.memory.as_prompt())
 
         self.state = "speaking"
@@ -222,6 +224,10 @@ class RealtimeAgent:
         await self.stt.close()
         await self.tts.close()
         self.player.close()
+        # Auto-keep: promote all noted (pending) facts into long-term memory.
+        kept = self.brain.memory.promote_all()
+        if kept:
+            print(f"\n[auto-kept {kept} noted fact(s) into learned memories")
 
 
 def main(model: str | None = None, mute: bool = False) -> None:

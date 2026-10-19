@@ -9,6 +9,16 @@ HEADER = (
     "> Facts taught to Thathayya during conversations. Auto-managed; safe to edit by hand.\n\n"
 )
 
+PENDING_HEADER = (
+    "# Pending (noted, unverified) — Thathayya\n\n"
+    "> Facts noted during the live call. You review; /keep promotes, /drop discards.\n\n"
+)
+
+
+def pending_path() -> Path:
+    config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    return config.RUNTIME_DIR / "pending_memories.md"
+
 
 class Memory:
     def __init__(self, path: Path | None = None, client=None, model: str | None = None):
@@ -85,6 +95,76 @@ class Memory:
     def _write(self, facts: list[str]) -> None:
         body = "\n".join(f"- {f}" for f in facts)
         self.path.write_text(HEADER + body + "\n", encoding="utf-8")
+
+    # --- pending (noted, unverified) ---
+    def _pending_facts(self) -> list[str]:
+        p = pending_path()
+        if not p.exists():
+            return []
+        out = []
+        for line in p.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("- "):
+                out.append(line[2:].strip())
+        return out
+
+    def add_pending(self, statement: str) -> str:
+        """Note a fact into the pending file (unverified)."""
+        statement = statement.strip()
+        if not statement:
+            return ""
+        p = pending_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        existing = self._pending_facts()
+        # dedup: if the exact same fact is already noted, don't add twice
+        if statement in existing:
+            return statement
+        if self._client is not None and existing:
+            try:
+                merged = self._merge(existing, statement)
+                self._write_pending(merged)
+                return merged[-1]
+            except Exception:
+                pass
+        existing.append(statement)
+        self._write_pending(existing)
+        return statement
+
+    def _write_pending(self, facts: list[str]) -> None:
+        p = pending_path()
+        body = "\n".join(f"- {f}" for f in facts)
+        p.write_text(PENDING_HEADER + body + "\n", encoding="utf-8")
+
+    def pending(self) -> list[str]:
+        return self._pending_facts()
+
+    def promote(self, fact: str) -> bool:
+        """Move one verified pending fact into learned memories; remove it from pending."""
+        fact = fact.strip()
+        if fact not in self._pending_facts():
+            return False
+        self.add(fact)
+        remaining = [f for f in self._pending_facts() if f != fact]
+        self._write_pending(remaining)
+        return True
+
+    def promote_all(self) -> int:
+        """Auto-keep: move every pending fact into learned memories."""
+        n = 0
+        for fact in list(self._pending_facts()):
+            if self.promote(fact):
+                n += 1
+        return n
+
+    def discard(self, fact: str) -> bool:
+        fact = fact.strip()
+        current = self._pending_facts()
+        remaining = [f for f in current if f != fact]
+        self._write_pending(remaining)
+        return len(remaining) < len(current)
+
+    def discard_all(self) -> None:
+        self._write_pending([])
 
 
 TRIGGERS = (
