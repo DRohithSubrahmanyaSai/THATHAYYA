@@ -43,4 +43,10 @@
 జినన్రూ
 పొదూరూ మండలం
 పొదూరూ
+# --- common Telugu words the clip shows Deepgram mishears ---
+తీసినావూ
+పాడూ
+చాట్
+వసతూ
+గేటూ
 # --- add more below ---
