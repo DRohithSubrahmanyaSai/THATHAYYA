@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from groq import APIError, Groq
 
 from . import config
@@ -40,13 +42,19 @@ def _reasoning_kwargs(model: str) -> dict:
 
 
 class Brain:
-    def __init__(self, model: str | None = None, max_history: int = 20, persona: dict | None = None):
+    def __init__(
+        self,
+        model: str | None = None,
+        max_history: int = 20,
+        persona: dict | None = None,
+        memory_path: Path | None = None,
+    ):
         if not config.GROQ_API_KEY:
             raise RuntimeError("GROQ_API_KEY is not set. Get a free key at https://console.groq.com and add it to .env")
         self.client = Groq(api_key=config.GROQ_API_KEY)
         self.model = model or config.GROQ_MODEL
         self.max_history = max_history
-        self.memory = Memory(client=self.client)
+        self.memory = Memory(path=memory_path, client=self.client) if memory_path else Memory(client=self.client)
         self.persona = persona if persona is not None else config.PERSONA
         self.system = build_system_prompt(self.persona, learned=self.memory.as_prompt())
         self.history: list[dict] = []
