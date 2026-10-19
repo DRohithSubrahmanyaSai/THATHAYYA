@@ -76,7 +76,10 @@ class Memory:
             f'New statement from the grandson: "{statement}"\n\n'
             "Return the FULL updated bullet list. Rules:\n"
             "- One fact per line, each line starting with '- '.\n"
-            "- Merge duplicates; if the new statement corrects an old fact, replace it.\n"
+            "- Merge exact duplicates; if the new statement corrects an old fact, replace it.\n"
+            "- KEEP any new name, place, job, preference, or person the grandson states — "
+            "these are part of Thathayya's real story. Only drop a line if it is pure small talk "
+            "that states no durable fact.\n"
             "- Keep each fact short. Keep the same language mix already used.\n"
             "- If the new statement has no durable fact, return the existing list unchanged.\n"
             "- Output ONLY the bullet list. No preamble, no headings."
