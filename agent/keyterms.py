@@ -16,8 +16,9 @@ def _read_list(path: Path) -> list[str]:
     if not path.exists():
         return []
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
+    text = path.read_text(encoding="utf-8-sig")
+    for line in text.splitlines():
+        line = line.strip().lstrip("\ufeff")
         if not line or line.startswith("#"):
             continue
         out.append(line)

@@ -1,4 +1,4 @@
-# Keyterms — names, places, and words Deepgram should recognize
+﻿# Keyterms — names, places, and words Deepgram should recognize
 #
 # One term per line. Multi-word phrases are fine. Blank lines and lines
 # starting with '#' are ignored. Up to 100 terms total (after merging
@@ -8,18 +8,32 @@
 తాతయ్య
 అమ్మమ్మ
 నానమ్మ
-మనవడు
-మనవరాలు
-కూతురు
-అబ్బాయి
+మనవడూ
+మనవరాలూ
+కూతూరు
+అబ్బాఇ
 భార్య
-ఆవిడ
+ఆవీడ
 
 # --- family names ---
 నాగమణి
 
 # --- places ---
 నర్సాపురం
-గోదావరి
+గోదావరీ
+జిన్నూరు
+పొద్దురూ మండలం
+పాలకొల్లూ
+
+# --- Thathayya's family (for STT) ---
+కొంపతల సత్యనరయణం
+వరలకష్మీ
+కొంపతల భవనీ ప్రసాదం
+నాగమణి
+దగ్గూ సత్యనరయణం
+రామ్మ
+రోహిత్ సుబ్రహ్మణ్య సాఇ
+ధనలకష్మీ నవ్యసౌీ
+ఉమా మనసా దేవీ
 
 # --- add more below ---
