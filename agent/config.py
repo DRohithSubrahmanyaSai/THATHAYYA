@@ -136,5 +136,6 @@ BARGE_IN_MIN_S = float(env("BARGE_IN_MIN_S", "0.15"))
 
 CARTESIA_SR = int(env("CARTESIA_SR", "24000"))
 PLAYER_SR = int(env("PLAYER_SR", "24000"))
+TTS_CHUNKS_TIMEOUT_S = float(env("TTS_CHUNKS_TIMEOUT_S", "60"))
 
 LOW_CONFIDENCE_REPLY = env("LOW_CONFIDENCE_REPLY", "ఏమన్నావ్ బాబూ, క్లియర్‌గా చెప్పు.")

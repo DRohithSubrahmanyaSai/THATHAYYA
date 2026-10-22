@@ -75,11 +75,13 @@ class CartesiaTTSStream:
         except Exception:
             pass
 
-    async def chunks(self, context_id: str, timeout: float = 30.0):
+    async def chunks(self, context_id: str, timeout: float | None = None):
+        t = timeout if timeout is not None else config.TTS_CHUNKS_TIMEOUT_S
         while True:
             try:
-                data = await asyncio.wait_for(self._queue.get(), timeout=timeout)
+                data = await asyncio.wait_for(self._queue.get(), timeout=t)
             except asyncio.TimeoutError:
+                print(f"[tts timeout] no audio within {t}s for context {context_id}")
                 return
             kind = data.get("type")
             if kind == "chunk":
