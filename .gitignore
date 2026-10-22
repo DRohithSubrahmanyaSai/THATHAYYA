@@ -15,3 +15,4 @@ runtime/logs/
 tests/out/
 *.log
 .DS_Store
+runtime/live_memories.md

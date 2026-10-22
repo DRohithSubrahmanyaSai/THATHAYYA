@@ -35,6 +35,7 @@ def extract_terms(text: str) -> list[str]:
 
 def get_keyterms() -> list[str]:
     terms = list(_read_list(config.KEYTERMS_FILE))
+    terms += list(_read_list(config.KEYTERMS_LEARNED_FILE))
     if config.MEMORY_FILE.exists():
         fact_lines = [
             ln for ln in config.MEMORY_FILE.read_text(encoding="utf-8").splitlines() if ln.strip().startswith("- ")

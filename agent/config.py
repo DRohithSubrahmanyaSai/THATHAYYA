@@ -13,7 +13,11 @@ DATA_DIR = BASE / "data"
 RECORDINGS_DIR = DATA_DIR / "recordings"
 MEMORY_FILE = RUNTIME_DIR / "learned_memories.md"
 PENDING_MEMORIES = RUNTIME_DIR / "pending_memories.md"
+LIVE_MEMORY_FILE = RUNTIME_DIR / "live_memories.md"
 KEYTERMS_FILE = PERSONA_DIR / "keyterms.txt"
+KEYTERMS_LEARNED_FILE = RUNTIME_DIR / "keyterms_learned.txt"
+PRON_FILE = RUNTIME_DIR / "pronunciations.json"
+PRON_REFS_DIR = RUNTIME_DIR / "pronunciation_refs"
 LOGS_DIR = RUNTIME_DIR / "logs"
 
 
@@ -96,10 +100,10 @@ DATASET_PROMPT = render_dataset(DATASET)
 GROQ_API_KEY = env("GROQ_API_KEY")
 GROQ_MODEL = env("GROQ_MODEL", "openai/gpt-oss-120b")
 GROQ_MERGE_MODEL = env("GROQ_MERGE_MODEL", GROQ_MODEL)
-GROQ_TEMPERATURE = float(env("GROQ_TEMPERATURE", "0.35"))
-GROQ_MAX_TOKENS = int(env("GROQ_MAX_TOKENS", "120"))
+GROQ_TEMPERATURE = float(env("GROQ_TEMPERATURE", "0.25"))
+GROQ_MAX_TOKENS = int(env("GROQ_MAX_TOKENS", "90"))
 GROQ_REASONING_EFFORT = env("GROQ_REASONING_EFFORT", "low")
-GROQ_TIMEOUT_S = float(env("GROQ_TIMEOUT_S", "8"))
+GROQ_TIMEOUT_S = float(env("GROQ_TIMEOUT_S", "5"))
 GROQ_FALLBACK_MODEL = env("GROQ_FALLBACK_MODEL", "openai/gpt-oss-20b")
 GROQ_LEARN_MODEL = env("GROQ_LEARN_MODEL", "openai/gpt-oss-20b")
 LEARN_MIN_CONF = float(env("LEARN_MIN_CONF", "0.0"))
@@ -110,6 +114,8 @@ CARTESIA_API_KEY = env("CARTESIA_API_KEY")
 CARTESIA_VOICE_ID = env("CARTESIA_VOICE_ID")
 CARTESIA_MODEL = env("CARTESIA_MODEL", VOICE.get("cartesia", {}).get("model", "sonic-3.6"))
 CARTESIA_VERSION = env("CARTESIA_VERSION", "2026-08-14")
+CARTESIA_LANGUAGE = env("CARTESIA_LANGUAGE", "te")
+CARTESIA_MAX_BUFFER_MS = int(env("CARTESIA_MAX_BUFFER_MS", "200"))
 DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY")
 HF_TOKEN = env("HF_TOKEN")
 
@@ -138,4 +144,14 @@ CARTESIA_SR = int(env("CARTESIA_SR", "24000"))
 PLAYER_SR = int(env("PLAYER_SR", "24000"))
 TTS_CHUNKS_TIMEOUT_S = float(env("TTS_CHUNKS_TIMEOUT_S", "60"))
 
+# --- real-time learning / clarity ---
+PRON_DICT_ENABLED = env("PRON_DICT_ENABLED", "1") == "1"
+PRON_REF_S = float(env("PRON_REF_S", "5"))
+REPLY_MAX_SENTENCES = int(env("REPLY_MAX_SENTENCES", "1"))
+REPLY_MAX_CHARS = int(env("REPLY_MAX_CHARS", "140"))
+LLM_FIRST_TOKEN_TIMEOUT_S = float(env("LLM_FIRST_TOKEN_TIMEOUT_S", "2.5"))
+
 LOW_CONFIDENCE_REPLY = env("LOW_CONFIDENCE_REPLY", "ఏమన్నావ్ బాబూ, క్లియర్‌గా చెప్పు.")
+UNKNOWN_PERSON_REPLY = env("UNKNOWN_PERSON_REPLY", "ఎవరో తెలియదు బాబూ, మీరే చెప్పండి.")
+CORRECTION_ACK = env("CORRECTION_ACK", "సరే బాబూ, అలాగే చెప్తా.")
+EMPTY_REPLY = env("EMPTY_REPLY", "ఏమో బాబూ, మళ్ళీ చెప్పు.")

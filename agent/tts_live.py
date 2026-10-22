@@ -5,7 +5,7 @@ import json
 import numpy as np
 import websockets
 
-from . import config
+from . import config, pronunciation
 
 
 class CartesiaTTSStream:
@@ -55,6 +55,7 @@ class CartesiaTTSStream:
             "model_id": self.model_id,
             "transcript": text,
             "voice": self.voice_id,
+            "language": config.CARTESIA_LANGUAGE,
             "output_format": {
                 "container": "raw",
                 "encoding": "pcm_s16le",
@@ -63,10 +64,12 @@ class CartesiaTTSStream:
             "context_id": context_id,
             "continue": continue_,
             "add_timestamps": False,
-            "speed": config.CARTESIA_SPEED,
-            "scale": config.CARTESIA_SCALE,
-            "temperature": config.CARTESIA_TEMPERATURE,
+            "max_buffer_delay_ms": config.CARTESIA_MAX_BUFFER_MS,
+            "generation_config": {"speed": config.CARTESIA_SPEED},
         }
+        dict_id = pronunciation.get_store().dictionary_id
+        if dict_id:
+            payload["pronunciation_dict_id"] = dict_id
         await self._ws.send(json.dumps(payload))
 
     async def cancel(self, context_id: str) -> None:

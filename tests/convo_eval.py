@@ -32,6 +32,7 @@ BANNED_RE = re.compile(r"\b(ai\b|assistant|language model|chatgpt|bot|llm)\b", r
 # don't work on Telugu script in this regex engine).
 DENIAL_KEYWORDS = ("కాదు", "లేదు", "తెలియదు", "గుర్తు లేదు", "అంటే")
 
+DENIAL_RE = re.compile("|".join(re.escape(k) for k in DENIAL_KEYWORDS))
 MAX_LEN = 220
 
 
@@ -114,6 +115,12 @@ SCENARIOS = {
     "smalltalk": Scenario(
         "smalltalk",
         "వాతావరణం ఎలా ఉంది?",
+    ),
+    "unknown_person": Scenario(
+        "unknown person (anti-hallucination)",
+        "ఎవరు మలజెప్పి నలూడి గారు ఎవరు?",
+        must_not=("మలజెప్పి", "నలూడి"),
+        soft=True,
     ),
     "memory_recall": Scenario(
         "memory recall (live learning)",

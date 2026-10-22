@@ -14,10 +14,34 @@ PENDING_HEADER = (
     "> Facts noted during the live call. You review; /keep promotes, /drop discards.\n\n"
 )
 
+LIVE_HEADER = (
+    "# Live memories (this call) — Thathayya\n\n"
+    "> Facts learned during the current call. Cleared at the start of each call.\n\n"
+)
+
 
 def pending_path() -> Path:
     config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
     return config.RUNTIME_DIR / "pending_memories.md"
+
+
+def live_path() -> Path:
+    config.RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    return config.LIVE_MEMORY_FILE
+
+
+def _read_bullets(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    out: list[str] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("- "):
+                out.append(line[2:].strip())
+    except OSError:
+        return []
+    return out
 
 
 class Memory:
@@ -26,6 +50,9 @@ class Memory:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             self.path.write_text(HEADER, encoding="utf-8")
+        self.live_path = live_path()
+        if not self.live_path.exists():
+            self.live_path.write_text(LIVE_HEADER, encoding="utf-8")
         self.model = model or config.GROQ_MERGE_MODEL
         self._client = client
         if self._client is None and config.GROQ_API_KEY:
@@ -33,28 +60,54 @@ class Memory:
 
             self._client = Groq(api_key=config.GROQ_API_KEY)
 
+    # --- learned (long-term) ---
     def facts(self) -> list[str]:
-        out: list[str] = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("- "):
-                out.append(line[2:].strip())
-        return out
+        return _read_bullets(self.path)
 
     def count(self) -> int:
         return len(self.facts())
 
-    def as_prompt(self) -> str:
-        facts = self.facts()
-        if not facts:
-            return ""
-        return "\n".join(f"- {f}" for f in facts)
+    # --- live (this call) ---
+    def live_facts(self) -> list[str]:
+        return _read_bullets(self.live_path)
 
+    def reset_live(self) -> None:
+        self.live_path.write_text(LIVE_HEADER, encoding="utf-8")
+
+    def add_live(self, statement: str) -> str:
+        statement = statement.strip()
+        if not statement:
+            return ""
+        existing = self.live_facts()
+        if statement in existing or statement in self.facts():
+            return statement
+        existing.append(statement)
+        self._write_live(existing)
+        return statement
+
+    def _write_live(self, facts: list[str]) -> None:
+        body = "\n".join(f"- {f}" for f in facts)
+        self.live_path.write_text(LIVE_HEADER + body + "\n", encoding="utf-8")
+
+    def as_prompt(self) -> str:
+        seen = set()
+        merged: list[str] = []
+        for fact in self.facts() + self.live_facts():
+            if fact and fact not in seen:
+                seen.add(fact)
+                merged.append(fact)
+        if not merged:
+            return ""
+        return "\n".join(f"- {f}" for f in merged)
+
+    # --- add / merge ---
     def add(self, statement: str, merge: bool = True) -> str:
         statement = statement.strip()
         if not statement:
             return ""
         existing = self.facts()
+        if statement in existing:
+            return statement
         if merge and self._client is not None and existing:
             try:
                 merged = self._merge(existing, statement)
@@ -101,17 +154,9 @@ class Memory:
 
     # --- pending (noted, unverified) ---
     def _pending_facts(self) -> list[str]:
-        p = pending_path()
-        if not p.exists():
-            return []
-        out = []
-        for line in p.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("- "):
-                out.append(line[2:].strip())
-        return out
+        return _read_bullets(pending_path())
 
-    def add_pending(self, statement: str) -> str:
+    def add_pending(self, statement: str, merge: bool = False) -> str:
         """Note a fact into the pending file (unverified)."""
         statement = statement.strip()
         if not statement:
@@ -119,10 +164,9 @@ class Memory:
         p = pending_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         existing = self._pending_facts()
-        # dedup: if the exact same fact is already noted, don't add twice
         if statement in existing:
             return statement
-        if self._client is not None and existing:
+        if merge and self._client is not None and existing:
             try:
                 merged = self._merge(existing, statement)
                 self._write_pending(merged)
@@ -146,17 +190,22 @@ class Memory:
         fact = fact.strip()
         if fact not in self._pending_facts():
             return False
-        self.add(fact)
+        self.add(fact, merge=False)
         remaining = [f for f in self._pending_facts() if f != fact]
         self._write_pending(remaining)
         return True
 
     def promote_all(self) -> int:
-        """Auto-keep: move every pending fact into learned memories."""
+        """Auto-keep: move live + pending facts into learned memories."""
         n = 0
-        for fact in list(self._pending_facts()):
-            if self.promote(fact):
+        for fact in list(self.live_facts()) + list(self._pending_facts()):
+            if not fact:
+                continue
+            if fact not in self.facts():
+                self.add(fact, merge=False)
                 n += 1
+        self.reset_live()
+        self._write_pending([])
         return n
 
     def discard(self, fact: str) -> bool:
