@@ -21,12 +21,31 @@ _CORRECTION_FIX = (
     "అది", "say", "pronounce", "not",
 )
 
+# Tokens that showed up as STT noise in real calls. Asking "what did you say?"
+# is better than letting the LLM invent a meaning for them.
+_ASR_GARBLE = ("గోరేంటి", "గోరెండు", "గోరెండ్", "గోరెండ", "గోరు")
+
 _GREETINGS = (
     "హలో", "హాయ్", "నమస్కారం", "నమస్తే", "బాగున్నావా", "ఏం చేస్తున్నావ్",
     "hello", "hi", "hey",
 )
 
 _PERSON_Q = ("ఎవరు", "ఎవరి", "ఎవరికి", "ఎవరైనా", "who")
+
+# The client is not correcting one word; they are saying the whole answer was
+# wrong / invented / nonsensical. Repair instead of continuing normally.
+_COMPLAINT = (
+    "అసలు ఉండదు", "ఉండదు కద", "పిచ్చి", "తప్పు", "అబద్ధం", "నాన్సెన్స్",
+    "వట్టి మాటలు", "అర్థం కావడం లేదు", "అర్థం కాలేదు", "ఏం మాటలాడుతున్న",
+    "అలా కాదు", "సరిగ్గా లేదు", "బాగా లేదు", "నిజం కాదు", "తల తినేస్తున్న",
+)
+
+# Only a bare request to repeat, not "అదే అండి, అన్నం తిన్నారా?".
+_REPEAT_SHAPE = re.compile(
+    r"^\s*(?:అదే|అదేంటి|అదే ఏంటి|మళ్ళీ|మళ్ళీ చెప్పు|మళ్ళీ చెప్పండి|"
+    r"ఏం అన్నారు|ఏం అన్నావ్|అర్థం కాలేదు|అర్థం కావడం లేదు|క్లియర్‌గా చెప్పండి)"
+    r"(?:\s+బాబూ|\s+అండి)?\s*[?.!]*$"
+)
 
 # Words that identify a topic, not a person/name. They must never make an
 # "evaru ..." question look known.
@@ -104,6 +123,15 @@ def is_correction(text: str) -> bool:
     return bool(_CORRECTION_SHAPE.search(text))
 
 
+def is_complaint(text: str) -> bool:
+    low = (text or "").lower()
+    return any(k in low for k in _COMPLAINT)
+
+
+def is_repeat_request(text: str) -> bool:
+    return bool(_REPEAT_SHAPE.match((text or "").strip()))
+
+
 def is_greeting(text: str) -> bool:
     low = text.lower().strip()
     if len(low.split()) > 6:
@@ -122,7 +150,8 @@ def unknown_person_question(text: str) -> bool:
 
 
 def classify(text: str, conf: float | None = None) -> str:
-    """Return one of: unclear, correction, teach, unknown_person, greeting, normal."""
+    """Return one of: unclear, correction, complaint, teach, unknown_person,
+    repeat, greeting, normal."""
     text = (text or "").strip()
     if conf is not None and conf < config.STT_CONFIDENCE_MIN:
         return "unclear"
@@ -130,10 +159,16 @@ def classify(text: str, conf: float | None = None) -> str:
         return "unclear"
     if is_correction(text):
         return "correction"
+    if is_complaint(text):
+        return "complaint"
+    if any(g in text for g in _ASR_GARBLE):
+        return "unclear"
     if find_trigger(text):
         return "teach"
     if unknown_person_question(text):
         return "unknown_person"
+    if is_repeat_request(text):
+        return "repeat"
     if is_greeting(text):
         return "greeting"
     return "normal"

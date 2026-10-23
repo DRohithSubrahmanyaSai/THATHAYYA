@@ -128,6 +128,17 @@ SCENARIOS = {
         teach="నా ఇంటి పక్కన ఒక పెద్ద చెట్టు ఉంది",
         recall_any=("చెట్టు", "chettu", "పెద్ద", "పedes"),
     ),
+    "food_no_invention": Scenario(
+        "food (no invented dish)",
+        "నువ్వు ఏం తిన్నావ్?",
+        must_not=("గోరెండు", "గోరెండ్", "గోరెండ", "గోరు"),
+    ),
+    "complaint_repair": Scenario(
+        "complaint (repair, not continue)",
+        "గోరెండు బియ్యం అసలు ఉండదు కదండీ పిచ్చి పిచ్చిగా మాట్లాడుతున్నారు.",
+        must_any=("క్షమించ", "తప్పు", "మళ్ళీ", "అర్థం", "చెప్పండి"),
+        must_not=("గోరెండు", "గోరెండ్", "గోరెండ"),
+    ),
 }
 
 

@@ -23,6 +23,7 @@ from . import config
 _API_BASE = "https://api.cartesia.ai"
 _DICT_NAME = "Thathayya - client pronunciations"
 _ITEM_LIMIT = 200
+_SYNC_LOCK = threading.Lock()
 
 _PROTECTED = {
     "చాలా", "చాలు", "అది", "ఇది", "అవును", "కాదు", "మీరు", "నేను",
@@ -80,6 +81,9 @@ class PronunciationStore:
         self._client = client
         self._lock = threading.Lock()
         self._data = self._load()
+        if not self._data.get("dictionary_id") and config.CARTESIA_PRON_DICT_ID:
+            self._data["dictionary_id"] = config.CARTESIA_PRON_DICT_ID
+            self._save()
 
     # --- state ---
     def _load(self) -> dict:
@@ -108,6 +112,37 @@ class PronunciationStore:
     @property
     def dictionary_id(self) -> str | None:
         return self._data.get("dictionary_id")
+
+    def resolve_dictionary_id(self) -> str | None:
+        """Adopt the existing Cartesia dictionary by name (read-only lookup)."""
+        dict_id = self.dictionary_id
+        if dict_id:
+            return dict_id
+        if not config.CARTESIA_API_KEY or not config.PRON_DICT_ENABLED:
+            return None
+        headers = {
+            "X-API-Key": config.CARTESIA_API_KEY,
+            "Cartesia-Version": config.CARTESIA_VERSION,
+        }
+        try:
+            resp = requests.get(f"{_API_BASE}/pronunciation-dicts", headers=headers, timeout=10)
+            resp.raise_for_status()
+            body = resp.json() or {}
+            data = body.get("data") or body.get("dictionaries") or []
+            for item in data:
+                if (item.get("name") or "").strip() != config.CARTESIA_PRON_DICT_NAME:
+                    continue
+                dict_id = item.get("id")
+                if not dict_id:
+                    continue
+                with self._lock:
+                    self._data["dictionary_id"] = dict_id
+                    self._save()
+                print(f"[pron dict] using existing '{config.CARTESIA_PRON_DICT_NAME}' -> {dict_id}")
+                return dict_id
+        except Exception as e:  # noqa: BLE001
+            print(f"[pron dict] lookup failed: {str(e)[:140]}")
+        return None
 
     def as_prompt(self) -> str:
         items = self.items()
@@ -204,8 +239,9 @@ class PronunciationStore:
                 model=config.GROQ_LEARN_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.0,
-                max_tokens=100,
+                max_tokens=300,
                 timeout=config.GROQ_TIMEOUT_S,
+                reasoning_effort="low",
             )
             out = (resp.choices[0].message.content or "").strip()
         except Exception as e:  # noqa: BLE001
@@ -270,7 +306,7 @@ class PronunciationStore:
         ]
 
     def _sync(self) -> None:
-        if not config.CARTESIA_API_KEY:
+        if not config.CARTESIA_API_KEY or not config.PRON_DICT_ENABLED:
             return
         headers = {
             "X-API-Key": config.CARTESIA_API_KEY,
@@ -280,40 +316,71 @@ class PronunciationStore:
         items = self._payload_items()
         if not items:
             return
-        dict_id = self.dictionary_id
-        try:
-            if dict_id:
-                resp = requests.patch(
-                    f"{_API_BASE}/pronunciation-dicts/{dict_id}",
+        with _SYNC_LOCK:
+            dict_id = self.dictionary_id or self.resolve_dictionary_id()
+            try:
+                if dict_id:
+                    merged = self._merge_with_remote(dict_id, items, headers)
+                    if merged is None:
+                        return
+                    resp = requests.patch(
+                        f"{_API_BASE}/pronunciation-dicts/{dict_id}",
+                        headers=headers,
+                        json={"name": config.CARTESIA_PRON_DICT_NAME, "items": merged},
+                        timeout=10,
+                    )
+                    if resp.status_code == 404:
+                        dict_id = None
+                    else:
+                        resp.raise_for_status()
+                        print(f"[pron dict] synced {len(merged)} item(s) -> {dict_id}")
+                        return
+                resp = requests.post(
+                    f"{_API_BASE}/pronunciation-dicts/",
                     headers=headers,
-                    json={"name": _DICT_NAME, "items": items},
+                    json={
+                        "name": config.CARTESIA_PRON_DICT_NAME,
+                        "description": "Words the client taught Thathayya to pronounce.",
+                        "items": items,
+                        "access": "private",
+                    },
                     timeout=10,
                 )
-                if resp.status_code == 404:
-                    dict_id = None
-                else:
-                    resp.raise_for_status()
-                    return
-            resp = requests.post(
-                f"{_API_BASE}/pronunciation-dicts/",
-                headers=headers,
-                json={
-                    "name": _DICT_NAME,
-                    "description": "Words the client taught Thathayya to pronounce.",
-                    "items": items,
-                    "access": "private",
-                },
-                timeout=10,
+                resp.raise_for_status()
+                dict_id = (resp.json() or {}).get("id")
+                if dict_id:
+                    with self._lock:
+                        self._data["dictionary_id"] = dict_id
+                        self._save()
+                    print(f"[pron dict] created {len(items)} item(s) -> {dict_id}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[pron dict] sync failed: {str(e)[:140]}")
+
+    def _merge_with_remote(self, dict_id: str, local: list[dict], headers: dict) -> list[dict] | None:
+        """Preserve the existing dialect entries when adding client corrections."""
+        try:
+            resp = requests.get(
+                f"{_API_BASE}/pronunciation-dicts/{dict_id}", headers=headers, timeout=10
             )
+            if resp.status_code == 404:
+                return local
             resp.raise_for_status()
-            dict_id = (resp.json() or {}).get("id")
-            if dict_id:
-                with self._lock:
-                    self._data["dictionary_id"] = dict_id
-                    self._save()
-                print(f"[pron dict] synced {len(items)} item(s) -> {dict_id}")
+            remote = (resp.json() or {}).get("items") or []
         except Exception as e:  # noqa: BLE001
-            print(f"[pron dict] sync failed: {str(e)[:140]}")
+            print(f"[pron dict] merge read failed, not overwriting: {str(e)[:120]}")
+            return None
+        by_text = {
+            str(i.get("text", "")): {
+                "text": i.get("text", ""),
+                "pronunciation": i.get("pronunciation", ""),
+                "case_sensitive": bool(i.get("case_sensitive", False)),
+            }
+            for i in remote
+            if i.get("text") and i.get("pronunciation")
+        }
+        for item in local:
+            by_text[item["text"]] = item
+        return list(by_text.values())
 
 
 _STORE: PronunciationStore | None = None

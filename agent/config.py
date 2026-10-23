@@ -116,6 +116,10 @@ CARTESIA_MODEL = env("CARTESIA_MODEL", VOICE.get("cartesia", {}).get("model", "s
 CARTESIA_VERSION = env("CARTESIA_VERSION", "2026-08-14")
 CARTESIA_LANGUAGE = env("CARTESIA_LANGUAGE", "te")
 CARTESIA_MAX_BUFFER_MS = int(env("CARTESIA_MAX_BUFFER_MS", "200"))
+CARTESIA_PRON_DICT_ID = env(
+    "CARTESIA_PRON_DICT_ID", VOICE.get("cartesia", {}).get("pronunciation_dict_id", "")
+)
+CARTESIA_PRON_DICT_NAME = env("CARTESIA_PRON_DICT_NAME", "Thathayya")
 DEEPGRAM_API_KEY = env("DEEPGRAM_API_KEY")
 HF_TOKEN = env("HF_TOKEN")
 
@@ -150,8 +154,15 @@ PRON_REF_S = float(env("PRON_REF_S", "5"))
 REPLY_MAX_SENTENCES = int(env("REPLY_MAX_SENTENCES", "1"))
 REPLY_MAX_CHARS = int(env("REPLY_MAX_CHARS", "140"))
 LLM_FIRST_TOKEN_TIMEOUT_S = float(env("LLM_FIRST_TOKEN_TIMEOUT_S", "2.5"))
+TURN_IGNORE_S = float(env("TURN_IGNORE_S", "0.12"))
+EARLY_CLAUSE_CHARS = int(env("EARLY_CLAUSE_CHARS", "22"))
+EARLY_CLAUSE_MIN = int(env("EARLY_CLAUSE_MIN", "6"))
 
 LOW_CONFIDENCE_REPLY = env("LOW_CONFIDENCE_REPLY", "ఏమన్నావ్ బాబూ, క్లియర్‌గా చెప్పు.")
 UNKNOWN_PERSON_REPLY = env("UNKNOWN_PERSON_REPLY", "ఎవరో తెలియదు బాబూ, మీరే చెప్పండి.")
 CORRECTION_ACK = env("CORRECTION_ACK", "సరే బాబూ, అలాగే చెప్తా.")
 EMPTY_REPLY = env("EMPTY_REPLY", "ఏమో బాబూ, మళ్ళీ చెప్పు.")
+REPAIR_REPLY = env(
+    "REPAIR_REPLY", "క్షమించండి బాబూ, నేను తప్పుగా అర్థం చేసుకున్నాను. ఏం అన్నారో మళ్ళీ చెప్పండి."
+)
+REPEAT_PREFIX = env("REPEAT_PREFIX", "మళ్ళీ చెప్తా బాబూ.")

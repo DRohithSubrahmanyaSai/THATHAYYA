@@ -1,13 +1,15 @@
 """A/B test Cartesia TTS pronunciation for Telugu.
 
-Renders a fixed Telugu line with several voice/model/speed combos and saves
-WAVs to tests/out/ so you can listen and pick the best.
+Renders a fixed Telugu line with several speed/sample-rate/dictionary combos and
+saves WAVs to tests/out/ so you can listen and pick the best.
 
 Run:
-    $env:PATH="$env:LOCALAPPDATA\Microsoft\WinGet\Links;$env:PATH"
+    $env:PYTHONIOENCODING='utf-8'
     .\.venv\Scripts\python.exe tests/tts_ab.py
 """
+import asyncio
 import base64
+import json
 import sys
 from pathlib import Path
 
@@ -15,22 +17,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import soundfile as sf
 import websockets
-import asyncio
 
 from agent import config
 
-# Fixed Telugu line that exercises several words the voice mispronounces.
-TEST_LINE = "నమస్కారం బాబూ, నేనూ జిన్నూరు గ్రామం, పొదూరు మండలం నుండ్డి విసస్థితున్నాం, బాబూ."
+TEST_LINE = (
+    "నమస్కారం బాబూ, నేను సత్యనారాయణ. మా ఊరు జిన్నూరు, పొదూరు మండలం. "
+    "ఇంట్లో అన్నం, కూర తిన్నాను."
+)
 
-# (label, voice_id, model_id, speed)
+# (label, speed, sample_rate, use_dictionary)
 CASES = [
-    ("sonic-3.6 speed 0.9", config.CARTESIA_VOICE_ID, "sonic-3.6", 0.9),
-    ("sonic-3.6 speed 1.0", config.CARTESIA_VOICE_ID, "sonic-3.6", 1.0),
-    ("sonic-3.5 speed 0.9", config.CARTESIA_VOICE_ID, "sonic-3.5", 0.9),
+    ("dict on  24k speed 0.9", 0.9, 24000, True),
+    ("dict on  24k speed 1.0", 1.0, 24000, True),
+    ("dict on  44k speed 0.9", 0.9, 44100, True),
+    ("dict off 24k speed 0.9", 0.9, 24000, False),
 ]
 
 
-def synthesize(voice_id: str, model_id: str, speed: float, out_path: Path) -> None:
+def synthesize(speed: float, sample_rate: int, use_dictionary: bool, out_path: Path) -> None:
     url = f"wss://api.cartesia.ai/tts/websocket?cartesia_version={config.CARTESIA_VERSION}"
     headers = {
         "X-API-Key": config.CARTESIA_API_KEY,
@@ -41,45 +45,52 @@ def synthesize(voice_id: str, model_id: str, speed: float, out_path: Path) -> No
         async with websockets.connect(url, additional_headers=headers, max_size=None) as ws:
             ctx = "ab_test"
             payload = {
-                "model_id": model_id,
+                "model_id": config.CARTESIA_MODEL,
                 "transcript": TEST_LINE,
-                "voice": voice_id,
-                "output_format": {"container": "raw", "encoding": "pcm_s16le", "sample_rate": 24000},
+                "voice": config.CARTESIA_VOICE_ID,
+                "language": config.CARTESIA_LANGUAGE,
+                "output_format": {
+                    "container": "raw",
+                    "encoding": "pcm_s16le",
+                    "sample_rate": sample_rate,
+                },
                 "context_id": ctx,
                 "continue": False,
                 "add_timestamps": False,
-                "speed": speed,
-                "scale": 1.0,
-                "temperature": 0.8,
+                "max_buffer_delay_ms": config.CARTESIA_MAX_BUFFER_MS,
+                "generation_config": {"speed": speed},
             }
-            await ws.send(__import__("json").dumps(payload))
+            if use_dictionary and config.CARTESIA_PRON_DICT_ID:
+                payload["pronunciation_dict_id"] = config.CARTESIA_PRON_DICT_ID
+            await ws.send(json.dumps(payload))
             pcm = b""
             async for message in ws:
-                import json as _json
-                data = _json.loads(message)
+                data = json.loads(message)
                 kind = data.get("type")
                 if kind == "chunk":
                     pcm += base64.b64decode(data.get("data") or "")
                 elif kind == "done":
                     break
+                elif kind == "error":
+                    raise RuntimeError(str(data)[:200])
             audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            sf.write(str(out_path), audio, 24000, format="WAV", subtype="PCM_16")
+            sf.write(str(out_path), audio, sample_rate, format="WAV", subtype="PCM_16")
 
     asyncio.run(run())
 
 
 def main() -> None:
     out_dir = Path(__file__).resolve().parent / "out"
-    for label, voice_id, model_id, speed in CASES:
-        tag = f"{model_id}_s{speed}"
+    for label, speed, sample_rate, use_dict in CASES:
+        tag = f"s{speed}_{sample_rate // 1000}k_{'dict' if use_dict else 'nodict'}"
         out_path = out_dir / f"tts_ab_{tag}.wav"
         print(f"[{label}] -> {out_path.name}")
         try:
-            synthesize(voice_id, model_id, speed, out_path)
-        except Exception as e:
+            synthesize(speed, sample_rate, use_dict, out_path)
+        except Exception as e:  # noqa: BLE001
             print(f"  error: {e}")
-    print("Done. Listen to the WAVs in tests/out/ and pick the best model/speed.")
+    print("Done. Listen to the WAVs in tests/out/ and pick the best.")
 
 
 if __name__ == "__main__":

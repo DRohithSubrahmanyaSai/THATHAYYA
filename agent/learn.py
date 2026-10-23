@@ -7,6 +7,7 @@ it) and into the pending file for review. Explicit teaching phrases
 ("గుర్తు పెట్టుకో") are always learned.
 """
 
+import json
 import re
 
 from . import config
@@ -25,6 +26,12 @@ _FACT_HINTS = (
 # Match ASCII (English/meta) content that must never reach TTS.
 _ASCII_BLOCK = re.compile(r"[A-Za-z]{2,}")
 _ASCII_WORDS = re.compile(r"[A-Za-z][A-Za-z'\-]*(?:\s+[A-Za-z][A-Za-z'\-]*)*")
+_JSON_RE = re.compile(r"\{.*\}", re.S)
+
+_DISPUTE_COMMON = {
+    "అది", "ఇది", "అవును", "కాదు", "మీరు", "నేను", "మనం", "బాబూ",
+    "అండి", "ఏం", "ఎలా", "ఎందుకు", "చాలా", "మంచి", "మాట", "మాటలు",
+}
 
 
 def _strip_trigger(text: str) -> str:
@@ -89,7 +96,7 @@ class LiveLearner:
             model=self.model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
-            max_tokens=150,
+            max_tokens=300,
             timeout=config.GROQ_TIMEOUT_S,
             reasoning_effort="low",
         )
@@ -100,6 +107,48 @@ class LiveLearner:
         if out.startswith("- "):
             out = out[2:]
         return out or None
+
+    def extract_disputed(self, user_text: str, last_reply: str = "") -> str | None:
+        """Find the phrase the client says is invented/wrong (for a negative memory)."""
+        user_text = user_text.strip()
+        if not user_text:
+            return None
+        prompt = (
+            "A Telugu speaker says Thathayya said something wrong or invented.\n"
+            f'Thathayya\'s last line: "{last_reply or "(not available)"}"\n'
+            f'Speaker complaint: "{user_text}"\n\n'
+            "Find the exact short word or phrase that is wrong/invented/not real. "
+            "It must appear in Thathayya's line or in the complaint.\n"
+            "Return ONLY JSON: {\"phrase\":\"...\"} or the word NONE.\n"
+            "If the speaker only says they did not understand, or no specific phrase is "
+            "identifiable, return NONE. Never return a common word (అది, కాదు, బాబూ)."
+        )
+        try:
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=300,
+                timeout=config.GROQ_TIMEOUT_S,
+                reasoning_effort="low",
+            )
+            out = (resp.choices[0].message.content or "").strip()
+        except Exception as e:  # noqa: BLE001
+            print(f"[repair extract error] {e}")
+            return None
+        if not out or out.upper() == "NONE":
+            return None
+        m = _JSON_RE.search(out)
+        if not m:
+            return None
+        try:
+            phrase = str(json.loads(m.group(0)).get("phrase", "")).strip()
+        except (json.JSONDecodeError, AttributeError):
+            return None
+        phrase = phrase.strip(" \"'.,!?;:()[]{}")
+        if len(phrase) < 2 or len(phrase) > 40 or phrase in _DISPUTE_COMMON:
+            return None
+        return phrase
 
     @staticmethod
     def sanitize(text: str) -> str:

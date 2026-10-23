@@ -18,6 +18,7 @@
   },
   "cartesia": {
     "model": "sonic-3.6",
-    "sample_rate": 44100
+    "sample_rate": 44100,
+    "pronunciation_dict_id": "pdict_fjd6TwtBYVCed66k4jTKjE"
   }
 }

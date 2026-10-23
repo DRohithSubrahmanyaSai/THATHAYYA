@@ -1,3 +1,4 @@
+import asyncio
 import queue
 import threading
 import time
@@ -97,6 +98,12 @@ class StreamPlayer:
         while not self._q.empty() or self._leftover.size > 0:
             time.sleep(0.01)
         time.sleep(grace_s)
+
+    async def drain_async(self, grace_s: float = 0.12) -> None:
+        """Like drain() but never blocks the asyncio loop (keeps mic/STT live)."""
+        while not self._q.empty() or self._leftover.size > 0:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(grace_s)
 
     def play(self, audio: np.ndarray, sr: int) -> None:
         self.submit(audio, sr)

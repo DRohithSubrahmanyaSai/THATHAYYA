@@ -1,4 +1,10 @@
 _END = ".?!।॥\n"
+_CLAUSE = ",;:"
+
+
+def ends_sentence(text: str) -> bool:
+    text = (text or "").rstrip()
+    return bool(text) and text[-1] in _END
 
 
 class SentenceStream:
@@ -6,16 +12,35 @@ class SentenceStream:
 
     Emits on sentence-ending punctuation once a minimum length is reached, and
     hard-splits on spaces if the buffer grows past max_len without punctuation.
+    The first clause is emitted at a comma as soon as it is long enough, so TTS
+    can start speaking before the full sentence is generated.
     """
 
-    def __init__(self, min_len: int = 8, max_len: int = 160):
+    def __init__(
+        self,
+        min_len: int = 8,
+        max_len: int = 160,
+        first_clause_chars: int = 22,
+        first_clause_min: int = 6,
+    ):
         self._buf = ""
         self.min_len = min_len
         self.max_len = max_len
+        self.first_clause_chars = first_clause_chars
+        self.first_clause_min = first_clause_min
+        self._first = True
 
     def push(self, delta: str) -> list[str]:
         self._buf += delta or ""
         out: list[str] = []
+        if self._first:
+            idx = self._clause_boundary()
+            if idx is not None:
+                clause = self._buf[: idx + 1].strip()
+                self._buf = self._buf[idx + 1 :]
+                if clause:
+                    out.append(clause)
+                    self._first = False
         while True:
             idx = self._boundary()
             if idx is None:
@@ -24,6 +49,7 @@ class SentenceStream:
             self._buf = self._buf[idx + 1 :]
             if sentence:
                 out.append(sentence)
+                self._first = False
         while len(self._buf) >= self.max_len:
             cut = self._buf.rfind(" ", 0, self.max_len)
             if cut <= 0:
@@ -32,7 +58,15 @@ class SentenceStream:
             self._buf = self._buf[cut:].lstrip()
             if piece:
                 out.append(piece)
+                self._first = False
         return out
+
+    def _clause_boundary(self):
+        limit = min(len(self._buf), self.first_clause_chars)
+        for i, ch in enumerate(self._buf[:limit]):
+            if ch in _CLAUSE and i + 1 >= self.first_clause_min:
+                return i
+        return None
 
     def _boundary(self):
         for i, ch in enumerate(self._buf):
@@ -43,4 +77,5 @@ class SentenceStream:
     def flush(self) -> list[str]:
         sentence = self._buf.strip()
         self._buf = ""
+        self._first = False
         return [sentence] if sentence else []

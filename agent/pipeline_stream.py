@@ -12,7 +12,7 @@ from .brain import Brain
 from .learn import LiveLearner
 from .memory import CallLog
 from .player import StreamPlayer
-from .sentences import SentenceStream
+from .sentences import SentenceStream, ends_sentence
 from .stt_live import DeepgramLiveSTT
 from .tts_live import CartesiaTTSStream
 
@@ -48,9 +48,13 @@ class RealtimeAgent:
         self._audio = bytearray()
         self._max_audio = int(16000 * 2 * config.PRON_REF_S)
         self._bg_tasks: set = set()
+        self._flush_task = None
+        self._turn_started = 0.0
 
     async def start(self) -> None:
         self.brain.memory.reset_live()
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.pron.resolve_dictionary_id)
         await self.stt.connect()
         await self.tts.connect()
         self.player.start()
@@ -94,7 +98,17 @@ class RealtimeAgent:
             ev = await self.stt.events.get()
             kind = ev.get("type")
             if kind in ("interim", "final"):
-                if self.state != "listening" or time.time() < self._ignore_until:
+                if time.time() < self._ignore_until:
+                    continue
+                if self.state == "speaking":
+                    # Keep what the client says after a real barge-in; the
+                    # delayed flush below turns it into the next turn.
+                    if kind == "final" and self._barge.is_set():
+                        self._final_buf.append(ev["text"])
+                        if ev.get("confidence") is not None:
+                            self._conf.append(ev["confidence"])
+                    continue
+                if self.state != "listening":
                     continue
                 if kind == "interim":
                     continue
@@ -106,10 +120,25 @@ class RealtimeAgent:
             elif kind == "utterance_end":
                 if self.state == "listening" and time.time() >= self._ignore_until:
                     await self._flush_turn()
+                elif self.state == "speaking" and self._barge.is_set() and self._final_buf:
+                    self._schedule_deferred_flush()
             elif kind == "error":
                 print(f"[stt error] {ev.get('error')}")
             elif kind == "closed":
                 return
+
+    def _schedule_deferred_flush(self) -> None:
+        if self._flush_task is not None or not self._final_buf:
+            return
+        self._flush_task = asyncio.create_task(self._deferred_flush())
+
+    async def _deferred_flush(self) -> None:
+        try:
+            await asyncio.sleep(0.25)
+            if self.state == "listening" and self._final_buf:
+                await self._flush_turn()
+        finally:
+            self._flush_task = None
 
     async def _flush_turn(self) -> None:
         text = " ".join(self._final_buf).strip()
@@ -118,6 +147,7 @@ class RealtimeAgent:
         self._conf = []
         if not text:
             return
+        self._turn_started = time.time()
         kind = intent.classify(text, conf)
         self.log.write("user", text, confidence=conf, intent=kind)
         shown = f"{conf:.2f}" if conf is not None else "n/a"
@@ -128,10 +158,24 @@ class RealtimeAgent:
             return
         if kind == "unknown_person":
             await self._speak_line(config.UNKNOWN_PERSON_REPLY, intent_kind=kind)
+            self.brain.remember_turn(text, config.UNKNOWN_PERSON_REPLY)
+            return
+        if kind == "complaint":
+            self._schedule_repair(text)
+            await self._speak_line(config.REPAIR_REPLY, intent_kind=kind)
+            self.brain.remember_turn(text, config.REPAIR_REPLY)
             return
         if kind == "correction":
             self._schedule_correction(text)
             await self._speak_line(config.CORRECTION_ACK, intent_kind=kind)
+            self.brain.remember_turn(text, config.CORRECTION_ACK)
+            return
+        if kind == "repeat":
+            last = self.brain.last_reply()
+            line = f"{config.REPEAT_PREFIX} {last}" if last else config.EMPTY_REPLY
+            spoken_line = self._truncate(line)
+            await self._speak_line(spoken_line, intent_kind=kind)
+            self.brain.remember_turn(text, spoken_line)
             return
         if kind == "teach":
             fact = self.brain.remember_live(text)
@@ -140,6 +184,34 @@ class RealtimeAgent:
             await self._respond(text, conf, learn=False, intent_kind=kind)
             return
         await self._respond(text, conf, learn=True, intent_kind=kind)
+
+    @staticmethod
+    def _truncate(text: str) -> str:
+        limit = max(20, config.REPLY_MAX_CHARS)
+        if len(text) <= limit:
+            return text
+        cut = text[:limit].rsplit(" ", 1)[0] or text[:limit]
+        return cut.strip()
+
+    def _schedule_repair(self, text: str) -> None:
+        last = self.brain.last_reply()
+        loop = asyncio.get_running_loop()
+        fut = loop.run_in_executor(None, self._learn_repair, text, last)
+        self._bg_tasks.add(fut)
+        fut.add_done_callback(self._bg_tasks.discard)
+
+    def _learn_repair(self, text: str, last: str) -> None:
+        try:
+            phrase = self.learner.extract_disputed(text, last)
+            if not phrase:
+                return
+            fact = f'"{phrase}" ఎప్పుడూ అనకూడదు; అది నిజం కాదు.'
+            self.brain.memory.add_live(fact)
+            self.brain.memory.add_pending(fact, merge=False)
+            self.brain.refresh_system()
+            print(f"\n[repair] avoid invented phrase: {phrase}")
+        except Exception as e:  # noqa: BLE001
+            print(f"[repair error] {e}")
 
     def _schedule_correction(self, text: str) -> None:
         audio = bytes(self._audio[-int(16000 * 2 * config.PRON_REF_S):])
@@ -192,13 +264,15 @@ class RealtimeAgent:
                 if not self.mute:
                     self.player.submit(audio, sr)
             if not self.mute and not self._barge.is_set():
-                self.player.drain()
+                await self.player.drain_async()
         except Exception as e:  # noqa: BLE001
             print(f"[tts error] {e}")
         finally:
             self._ctx = None
             self.state = "listening"
-            self._ignore_until = time.time() + 0.3
+            self._ignore_until = time.time() + config.TURN_IGNORE_S
+            if self._barge.is_set() and self._final_buf:
+                self._schedule_deferred_flush()
         fa = f"{first_audio[0]:.2f}s" if first_audio[0] is not None else "n/a"
         self.log.write("assistant", text, first_audio=fa, intent=intent_kind)
 
@@ -229,16 +303,20 @@ class RealtimeAgent:
         max_sent = max(1, config.REPLY_MAX_SENTENCES)
         max_chars = max(20, config.REPLY_MAX_CHARS)
 
-        async def emit(sentence: str) -> None:
+        async def emit(sentence: str, final: bool = True) -> None:
             line = LiveLearner.sanitize(sentence)
             line = self.pron.apply(line).strip()
-            if len(line) > max_chars:
-                line = line[:max_chars].rsplit(" ", 1)[0] or line[:max_chars]
+            remaining = max_chars - sum(len(s) + 1 for s in spoken)
+            if remaining <= 1:
+                return
+            if len(line) > remaining:
+                line = line[:remaining].rsplit(" ", 1)[0] or line[:remaining]
             line = line.strip()
             if not line:
                 return
             spoken.append(line)
-            sent[0] += 1
+            if final:
+                sent[0] += 1
             await self.tts.send_text(ctx, line, continue_=True)
 
         async def sender() -> None:
@@ -273,14 +351,14 @@ class RealtimeAgent:
                     for sentence in splitter.push(delta):
                         if self._barge.is_set():
                             return
-                        await emit(sentence)
+                        await emit(sentence, final=ends_sentence(sentence))
                         if sent[0] >= max_sent:
                             await self.tts.send_text(ctx, "", continue_=False)
                             return
                 for sentence in splitter.flush():
                     if self._barge.is_set():
                         return
-                    await emit(sentence)
+                    await emit(sentence, final=True)
                     if sent[0] >= max_sent:
                         break
                 await self.tts.send_text(ctx, "", continue_=False)
@@ -304,12 +382,14 @@ class RealtimeAgent:
             print(f"[tts error] {e}")
         finally:
             if not self.mute and not self._barge.is_set():
-                self.player.drain()
+                await self.player.drain_async()
             send_task.cancel()
             try:
                 gen.close()
             except Exception:
                 pass
+            if self._barge.is_set() and self._final_buf:
+                self._schedule_deferred_flush()
 
         reply = " ".join(spoken).strip()
         if not reply:
@@ -319,6 +399,7 @@ class RealtimeAgent:
             return
         self.brain.remember_turn(text, reply)
         total = round(time.time() - t0, 2)
+        turn_wait = round(t0 - self._turn_started, 2) if self._turn_started else None
         fa = f"{first_audio[0]:.2f}s" if first_audio[0] is not None else "n/a"
         ft = f"{first_token[0]:.2f}s" if first_token[0] is not None else "n/a"
         self.log.write(
@@ -327,20 +408,23 @@ class RealtimeAgent:
             first_audio=fa,
             first_token=ft,
             total=total,
+            turn_wait=turn_wait,
             intent=intent_kind,
             sentences=sent[0],
         )
         print(f"Thathayya : {reply}")
-        print(f"[latency] first_token={ft} first_audio={fa}  total={total}s")
+        tw = f"{turn_wait:.2f}s" if turn_wait is not None else "n/a"
+        print(f"[latency] turn={tw} first_token={ft} first_audio={fa}  total={total}s")
         self._ctx = None
         self.state = "listening"
-        self._ignore_until = time.time() + 0.3
+        self._ignore_until = time.time() + config.TURN_IGNORE_S
 
     async def run(self) -> None:
         await self.start()
         print(
             f"learned memories: {self.brain.memory.count()} | "
-            f"pronunciation rules: {self.pron.count()} | log: {self.log.path.name}"
+            f"pronunciation rules: {self.pron.count()} | "
+            f"tts dict: {self.pron.dictionary_id or 'none'} | log: {self.log.path.name}"
         )
         print("Ready. Speak into your mic. Ctrl+C to quit.\n")
         try:
@@ -351,6 +435,8 @@ class RealtimeAgent:
             await self.close()
 
     async def close(self) -> None:
+        if self._flush_task is not None:
+            self._flush_task.cancel()
         for fut in list(self._bg_tasks):
             try:
                 await fut
